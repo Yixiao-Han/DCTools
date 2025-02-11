@@ -111,7 +111,7 @@ class datagroup:
     def __init__(self, histograms, observable:str="MT", name:str="DY",
                  channel:str="catSR_VBS", ptype:str="background", 
                  luminosity:float=1.0, rebin:int=1, 
-                 xsections:Dict={}, binrange:List=[]):
+                 xsections:Dict={}, binrange:List=[], era:str="some year"):
 
         self.histograms = histograms
         self.name  = name
@@ -126,8 +126,19 @@ class datagroup:
         self.observable = observable
         # droping bins the same way as droping elements in numpy arrays a[1:3]
         self.binrange = binrange
+        self.era = era
 
         self.stacked:hist.Hist = hist.Hist() 
+        # with open(f'./xsections_2018-HZZ.yaml',"r") as stream:
+        #    readsumw_2018=yaml.safe_load(stream)
+        # with open(f'./xsections_2017-HZZ.yaml',"r") as stream:
+        #    readsumw_2017=yaml.safe_load(stream)
+        # with open(f'./xsections_2016-HZZ.yaml',"r") as stream:
+        #    readsumw_2016=yaml.safe_load(stream)
+        # with open(f'./xsections_2016APV-HZZ.yaml',"r") as stream:
+        #    readsumw_2016APV=yaml.safe_load(stream)
+        with open(f'./xsections_{era}-HZZ.yaml',"r") as stream:
+           readsumw=yaml.safe_load(stream)
         if isinstance(list(self.histograms.values())[0]["hist"], dict):
             self.histograms = {
                     k: {
@@ -147,13 +158,22 @@ class datagroup:
             }]
 
             _scale = 1 
-            if ptype.lower() != "data": 
+            if ptype.lower() != "data":
+                try:
+                    # sumw = readsumw_2018[proc]['mean_weight']*readsumw_2018[proc]['num_events']+\
+                    # readsumw_2017[proc]['mean_weight']*readsumw_2017[proc]['num_events']+\
+                    # readsumw_2016[proc]['mean_weight']*readsumw_2016[proc]['num_events']+\
+                    # readsumw_2016APV[proc]['mean_weight']*readsumw_2016APV[proc]['num_events']
+                    sumw = readsumw[proc]['mean_weight']*readsumw[proc]['num_events']
+                except:
+                    sumw=_hist['sumw']
+                #sumw=_hist['sumw']
                 _scale = self.xs_scale(
-                    sumw=_hist['sumw'], 
+                    sumw, 
                     proc=proc
                 )
                 bh_hist = bh_hist * _scale
-            
+                print(proc, sumw)
             if self.stacked.ndim:
                 self.stacked += bh_hist
             else:
@@ -165,7 +185,7 @@ class datagroup:
 
     def get(self, systvar) -> hist.Hist:
         shapeUp, shapeDown = None, None
-        if "nominal" in systvar:
+        if "nominal" in systvar or "eft" in systvar:
             return self.stacked[{'systematic': systvar}].project(self.observable)
         else:
             try:
@@ -197,12 +217,12 @@ class datagroup:
         xsec *= 1000.0 
         assert xsec > 0, f"{proc} has a null cross section!"
         assert sumw > 0, f"{proc} sum of weights is null!"
-        scale = 1.0
+        #scale = 1.0
         scale = xsec * self.lumi/sumw
         return scale
     
     def __add__(self, other)-> Any:
-        new_datagroup = deepcopy(other)
+        new_datagroup= deepcopy(other)
         new_datagroup.stacked = self.stacked + other.stacked
         return new_datagroup
 
@@ -257,8 +277,8 @@ class datacard:
 
     def add_observation(self, shape):
         value = shape.sum().value
-        self.dc_file.append("bin          {0:>10}".format(self.channel))
-        self.dc_file.append("observation  {0:>10}".format(value))
+        self.dc_file.append("bin          {0:>20}".format(self.channel))
+        self.dc_file.append("observation  {0:>20}".format(value))
         self.shape_file["data_obs"] = shape
 
     def add_nuisance(self, process, name, value):
@@ -274,7 +294,7 @@ class datacard:
 
     def add_nominal(self, process, shape, ptype):
         if shape.sum().value <= 0:
-            print("[WARNING] bogus normalisation", process, shape.sum())
+            print ("[WARNING] bogus normalisation", process, shape.sum())
             return False
         else:
             shape = self.assure_positive_definit_shape(shape)
@@ -282,7 +302,8 @@ class datacard:
                 value = shape.sum().value
             else:
                 value = shape.sum()
-
+            if value > 1e+34:
+                value = 0
             self.rates.append((process, value, ptype))
             self.shape_file[process] = shape
             self.nominal_hist = shape
@@ -350,7 +371,7 @@ class datacard:
                     self.nominal_hist.values(0), 
                     where=self.nominal_hist.values(0)!=0
                 )>10,
-                self.nominal_hist.values(0) - np.abs(shape[1].values(0) - self.nominal_hist.values(0)), 
+                self.nominal_hist.values(0) + np.abs(shape[1].values(0) - self.nominal_hist.values(0)), 
                 shape[0].values(0)
             )
             
@@ -381,7 +402,10 @@ class datacard:
                     np.abs(self.nominal_hist.values(0) - var_dw)
                 )
                 var_up = self.nominal_hist.values(0) + uncert
-                var_dw = self.nominal_hist.values(0) + uncert
+                var_dw = self.nominal_hist.values(0) - uncert
+                # if cardname =="CMS_res_e_2017":
+                #     print (var_up,'var_up')
+                #     print (var_dw,'var_dw')
                 
             h_uncert_up = bh.Histogram(
                 bh.axis.Variable(self.nominal_hist.axes[0].edges),
@@ -404,6 +428,11 @@ class datacard:
             self.add_nuisance(process, nuisance, 1.0)
             self.shape_file[process + "_" + cardname + "Up"] = shape[1]
             self.shape_file[process + "_" + cardname + "Down"] = shape[0]
+#            print(process + "_" + cardname + "Up")
+
+ #           if cardname =="CMS_res_e_2018":
+ #               print(shape[1],'shape1_UP')
+ #               print(shape[0],'shape0_Down')
             
     def add_rate_param(self, name, channel, process, vmin=0.1, vmax=10):
         # name rateParam bin process initial_value [min,max]
@@ -440,18 +469,18 @@ class datacard:
         i_signal = 0
         i_backgr = 1 
         for tup in self.rates:
-            bins_line += "{0:>15}".format(self.channel)
-            proc_line += "{0:>15}".format(tup[0])
+            bins_line += "{0:>15}".format(self.channel)+' '
+            proc_line += "{0:>15}".format(tup[0])+' '
             if 'signal' in tup[2]:
                 indx_line += "{0:>15}".format(i_signal)
             else:
                 indx_line += "{0:>15}".format(i_backgr)
             rate_line += "{0:>15}".format("%.3f" % tup[1])
+#            print(tup[1])
             if 'signal' in tup[2]:
                 i_signal -= 1
             else:
                 i_backgr += 1
-
         self.dc_file.append(bins_line)
         self.dc_file.append(proc_line)
         self.dc_file.append(indx_line)

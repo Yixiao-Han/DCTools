@@ -75,6 +75,7 @@ def main():
     )
     parser.add_argument('--blind', action='store_true', help='blinding the channel')
     parser.add_argument('--checksyst', action='store_true')
+    parser.add_argument("-d" ,  '--dd', type=bool , default=False )
 
     options = parser.parse_args()
     config = dctools.read_config(options.input)
@@ -110,6 +111,7 @@ def main():
             channel    = options.channel,
             luminosity = config.luminosity.value,
             rebin      = options.rebin,
+            era        = options.era
         )
         
         datasets[p.name] = p
@@ -179,19 +181,32 @@ def main():
             continue
         
         if not card.add_nominal(p.name, p.get("nominal"), p.ptype): continue
+        year = options.era.replace('APV','')
+
+        if "DY" in p.name and options.dd:
+            card.add_log_normal(p.name, f"CMS_lumi_{options.era}", config.luminosity.uncer)
+            card.add_shape_nuisance(p.name, f"DY_dd_uncert_{options.era}",p.get(f"dataDrivenDYRatio_{options.era}"), symmetrise=False)
+            card.add_auto_stat()
+            continue
         
         # luminausity
         card.add_log_normal(p.name, f"CMS_lumi_{options.era}", config.luminosity.uncer)
         
         # scale factors / resolution
         card.add_shape_nuisance(p.name, f"CMS_res_e_{options.era}"  , p.get("ElectronEn"), symmetrise=True)
+# #        print (type(card))
+#         print(p.get("ElectronEn")[0].values(0),'UP')
+#         print(p.get("ElectronEn")[1].values(0),'down')
+#         print(p.get("nominal").values(0),'nominal')
+#         print(card.shape_file[f'{p.name}_CMS_res_e_{options.era}Up'].to_numpy(),'card_Up')
+#         print(card.shape_file[f'{p.name}_CMS_res_e_{options.era}Down'].to_numpy(),'card_Down')
         card.add_shape_nuisance(p.name, f"CMS_res_m_{options.era}"  , p.get("MuonRoc")   , symmetrise=True)
+        
         card.add_shape_nuisance(p.name, f"CMS_lept_sf_{options.era}", p.get("LeptonSF")  , symmetrise=False)
         card.add_shape_nuisance(p.name, f"CMS_trig_sf_{options.era}", p.get("triggerSF") , symmetrise=False)
 
         # JES/JES and UEPS 
-        #card.add_shape_nuisance(p.name, f"CMS_jes_{options.era}", p.get("JES"), symmetrise=False) 
-        year = options.era.replace('APV','')
+        card.add_shape_nuisance(p.name, f"CMS_jes_{options.era}", p.get("JES"), symmetrise=False) 
 
         card.add_shape_nuisance(p.name, f"JES_Absolute{year}"      , p.get(f"JES_Absolute{year}")      , symmetrise=False) 
         card.add_shape_nuisance(p.name, f"JES_BBEC1{year}"         , p.get(f"JES_BBEC1{year}")         , symmetrise=False) 
@@ -210,8 +225,11 @@ def main():
         card.add_shape_nuisance(p.name, f"CMS_UES_{options.era}", p.get("UES"), symmetrise=False)
         
         # Can maybe ne correlated over era's? 
-        card.add_shape_nuisance(p.name, f"PS_FSR_{options.era}", p.get("UEPS_FSR"), symmetrise=False)
-        card.add_shape_nuisance(p.name, f"PS_ISR_{options.era}", p.get("UEPS_ISR"), symmetrise=False)
+        #card.add_shape_nuisance(p.name, f"PS_FSR_{options.era}", p.get("UEPS_FSR"), symmetrise=False)
+        #card.add_shape_nuisance(p.name, f"PS_ISR_{options.era}", p.get("UEPS_ISR"), symmetrise=False)
+        # no correlated over era's
+        card.add_shape_nuisance(p.name, f"PS_FSR", p.get("UEPS_FSR"), symmetrise=False)
+        card.add_shape_nuisance(p.name, f"PS_ISR", p.get("UEPS_ISR"), symmetrise=False)
         
         # b-tagging uncertainties
         # btag_sf_bc_2016APV, btag_sf_light_2016APV
@@ -222,11 +240,11 @@ def main():
         except:
             pass
         
-        # b-tagging uncertainties correlated over years
+        # # b-tagging uncertainties correlated over years
         card.add_shape_nuisance(p.name, "CMS_btag_sf_bc"  , p.get("btag_sf_bc_correlated")   , symmetrise=False)
         card.add_shape_nuisance(p.name, "CMS_btag_sf_uds" , p.get("btag_sf_light_correlated"), symmetrise=True)
 
-        # other uncertainties
+        # # other uncertainties
         card.add_shape_nuisance(p.name, f"CMS_pileup_{options.era}", p.get("pileup_weight"), symmetrise=False)
 
         #QCD scale, PDF and other theory uncertainty
@@ -268,11 +286,11 @@ def main():
                 card.add_rate_param(f"NormDY_{options.era}", card_name+'*', p.name)
         
         # define rate for TOP category
-        elif p.name in ["Top"]:
-            if "EM" in card_name:
-                card.add_rate_param(f"NormTOP_{options.era}", "vbs-EM*", p.name)
-            elif "SR" in card_name:
-                card.add_rate_param(f"NormTOP_{options.era}", card_name+'*', p.name) 
+        # elif p.name in ["Top"]:
+        #     if "EM" in card_name:
+        #         card.add_rate_param(f"NormTOP_{options.era}", "vbs-EM*", p.name)
+        #     elif "SR" in card_name:
+        #         card.add_rate_param(f"NormTOP_{options.era}", card_name+'*', p.name) 
         card.add_auto_stat()
 
     # saving the datacard
