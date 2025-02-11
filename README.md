@@ -27,7 +27,7 @@ combine  -M AsymptoticLimits --datacard cards-VBS/combined.root \
 
 
 ## EFT fit
-
+sh run-EFT.sh #make eft data card
 ---
 This work is licensed under a
 [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License][cc-by-nc-sa].
